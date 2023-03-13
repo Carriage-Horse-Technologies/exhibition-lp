@@ -43,3 +43,8 @@ pub(crate) struct ModalState {
     pub(crate) is_display: bool,
     pub(crate) product_info: ProductInfo,
 }
+
+#[derive(Default, Debug, Clone, PartialEq, Store)]
+pub(crate) struct ChatTextFieldState {
+    pub(crate) onfocus: bool,
+}

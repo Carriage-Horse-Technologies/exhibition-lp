@@ -8,7 +8,7 @@ use yewdux::prelude::{use_store, use_store_value};
 use crate::{
     app::{
         models::{ChatMessage, LocationType},
-        states::{ChatTextHashState, ChatTextState, Username},
+        states::{ChatTextFieldState, ChatTextHashState, ChatTextState, Username},
     },
     settings,
 };
@@ -25,6 +25,7 @@ pub(crate) fn ChatTextField(props: &ChatTextFieldProps) -> Html {
     let username = use_store_value::<Username>();
     let node = use_node_ref();
     let (_, chat_text_dispatch) = use_store::<ChatTextHashState>();
+    let (_, chat_text_field_onfocus_dispatch) = use_store::<ChatTextFieldState>();
 
     // 送信5秒後に吹き出しを非表示にするcallback
     let balloon_timeout = {
@@ -98,8 +99,25 @@ pub(crate) fn ChatTextField(props: &ChatTextFieldProps) -> Html {
         })
     };
 
+    let onfocusin = {
+        let chat_text_field_onfocus_dispatch = chat_text_field_onfocus_dispatch.clone();
+        Callback::from(move |_| {
+            log::debug!("onfocusin");
+            chat_text_field_onfocus_dispatch.reduce(|_| ChatTextFieldState { onfocus: true }.into())
+        })
+    };
+
+    let onfocusout = {
+        let chat_text_field_onfocus_dispatch = chat_text_field_onfocus_dispatch.clone();
+        Callback::from(move |_| {
+            log::debug!("onfocusout");
+            chat_text_field_onfocus_dispatch
+                .reduce(|_| ChatTextFieldState { onfocus: false }.into())
+        })
+    };
+
     html! {
-        <textarea ref={node} onkeydown={onkeydown} name="chat" id="chat" cols="40" rows="3"
+        <textarea ref={node} onkeydown={onkeydown} onfocusin={onfocusin} onfocusout={onfocusout} name="chat" id="chat" cols="40" rows="3"
             placeholder={"Input text message...\nCtrl+Enter to send"}
             class={classes!("fixed", "rounded-2xl", "bg-dark-primary-deep",
             "bottom-[50px]", "left-[70vw]", "p-2", "z-[930]"

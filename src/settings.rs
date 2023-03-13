@@ -20,3 +20,7 @@ pub static CONFIG: Lazy<Config> = Lazy::new(|| Config {
 });
 
 pub const GITHUB_USERNAME_KEY: &'static str = "github_user_name";
+pub const MOVE_SPEED_MS: u32 = 500;
+pub const MOVING_DISTANCE: f64 = 50.0;
+pub const CHARA_SIZE: u32 = 64;
+pub const CHARA_OFFSET: u32 = CHARA_SIZE / 2;

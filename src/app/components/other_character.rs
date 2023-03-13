@@ -10,6 +10,7 @@ use crate::{
         states::{ChatTextHashState, ChatTextState},
     },
     my_utils::github_user_icon_url,
+    settings::MOVE_SPEED_MS,
 };
 
 #[derive(PartialEq, Properties)]
@@ -30,10 +31,20 @@ pub(crate) fn OtherCharacter(props: &OtherCharacterProps) -> Html {
         let balloon_node_ref = balloon_node_ref.clone();
         use_effect_with_deps(
             move |(character, character_node, balloon_node_ref)| {
-                move_node(character_node, &character.pos_x, &character.pos_y)
-                    .expect("Failed to character_node move_node.");
-                move_node(balloon_node_ref, &character.pos_x, &character.pos_y)
-                    .expect("Failed to balloon_node move_node");
+                move_node(
+                    character_node,
+                    &character.pos_x,
+                    &character.pos_y,
+                    MOVE_SPEED_MS,
+                )
+                .expect("Failed to character_node move_node.");
+                move_node(
+                    balloon_node_ref,
+                    &character.pos_x,
+                    &character.pos_y,
+                    MOVE_SPEED_MS,
+                )
+                .expect("Failed to balloon_node move_node");
 
                 let ele = character_node.cast::<HtmlElement>().unwrap();
                 log::debug!(

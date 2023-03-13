@@ -4,15 +4,15 @@ use wasm_bindgen::{prelude::Closure, JsCast};
 use web_sys::{HtmlElement, WebSocket};
 use yew::prelude::*;
 use yew_hooks::{use_bool_toggle, use_interval};
-use yewdux::prelude::use_store_value;
+use yewdux::prelude::{use_store, use_store_value};
 
 use crate::{
     app::{
         components::balloon::Balloon,
         models::{LocationType, MyLocation, PageOffsetDomRect},
-        states::{ChatTextHashState, ChatTextState, Username},
+        states::{ChatTextFieldState, ChatTextHashState, ChatTextState, Username},
     },
-    settings::{self},
+    settings::{self, CHARA_OFFSET, MOVE_SPEED_MS, MOVING_DISTANCE},
 };
 
 use super::move_node;
@@ -32,6 +32,7 @@ pub(crate) fn Myself(props: &MyselfProps) -> Html {
     let balloon_node_ref = use_node_ref();
     let is_active = use_bool_toggle(false);
     let chat_text_hash = use_store_value::<ChatTextHashState>();
+    let chat_text_field_onfocus = use_store_value::<ChatTextFieldState>();
 
     {
         let username = username.clone();
@@ -40,9 +41,10 @@ pub(crate) fn Myself(props: &MyselfProps) -> Html {
         let is_active = is_active.clone();
         let myself_rect = myself_rect.clone();
         let ws = ws.clone();
+        let chat_text_field_onfocus = chat_text_field_onfocus.clone();
 
         use_effect_with_deps(
-            move |(my_character_node_ref, is_active)| {
+            move |(my_character_node_ref, is_active, chat_text_field_onfocus)| {
                 let document = web_sys::window().unwrap().document().unwrap();
 
                 // マウス移動時
@@ -56,10 +58,15 @@ pub(crate) fn Myself(props: &MyselfProps) -> Html {
                             log::debug!("move! {},{}", e.page_x(), e.page_y());
 
                             // myself Nodeの移動
-                            move_node(&my_character_node_ref, &e.page_x(), &e.page_y())
-                                .expect("Failed to my_character_node_ref move_node");
+                            move_node(
+                                &my_character_node_ref,
+                                &e.page_x(),
+                                &e.page_y(),
+                                MOVE_SPEED_MS,
+                            )
+                            .expect("Failed to my_character_node_ref move_node");
                             // 吹き出しNodeの移動
-                            move_node(&balloon_node_ref, &e.page_x(), &e.page_y())
+                            move_node(&balloon_node_ref, &e.page_x(), &e.page_y(), MOVE_SPEED_MS)
                                 .expect("Failed to balloon_node_ref move_node");
 
                             let win = web_sys::window().unwrap();
@@ -80,6 +87,31 @@ pub(crate) fn Myself(props: &MyselfProps) -> Html {
                                 rect.x(),
                                 rect.y()
                             );
+
+                            // キャラが画面端にいるときは自動スクロール
+                            let x_rate = rect.x()
+                                / win
+                                    .inner_width()
+                                    .unwrap_or_default()
+                                    .as_f64()
+                                    .unwrap_or_default();
+                            let y_rate = rect.y()
+                                / win
+                                    .inner_height()
+                                    .unwrap_or_default()
+                                    .as_f64()
+                                    .unwrap_or_default();
+                            if x_rate < 0.1 {
+                                win.scroll_by_with_x_and_y(-10., 0.);
+                            } else if x_rate > 0.9 {
+                                win.scroll_by_with_x_and_y(10., 0.);
+                            }
+                            if y_rate < 0.1 {
+                                win.scroll_by_with_x_and_y(0., -10.);
+                            } else if y_rate > 0.9 {
+                                win.scroll_by_with_x_and_y(0., 10.);
+                            }
+
                             let page_offset_dom_rect =
                                 PageOffsetDomRect::from_dom_rect_and_page_offset(
                                     rect,
@@ -108,6 +140,92 @@ pub(crate) fn Myself(props: &MyselfProps) -> Html {
                     }
                 }));
 
+                // キー操作時
+                let keydown_listener = Closure::<dyn Fn(KeyboardEvent)>::wrap(Box::new({
+                    let my_character_node_ref = my_character_node_ref.clone();
+                    let balloon_node_ref = balloon_node_ref.clone();
+                    let myself_rect = myself_rect.clone();
+                    let chat_text_field_onfocus = chat_text_field_onfocus.clone();
+                    move |e| {
+                        // chat text fieldにフォーカスされていたら操作させない
+                        if chat_text_field_onfocus.onfocus {
+                            return;
+                        }
+
+                        let win = web_sys::window().unwrap();
+                        // 自キャラの短形取得
+                        let element = my_character_node_ref.cast::<HtmlElement>().unwrap();
+                        let rect = element.get_bounding_client_rect();
+                        let page_offset_dom_rect = PageOffsetDomRect::from_dom_rect_and_page_offset(
+                            rect.clone(),
+                            (
+                                win.page_x_offset().unwrap_or_default(),
+                                win.page_y_offset().unwrap_or_default(),
+                            ),
+                        );
+                        log::debug!(
+                            "key-rect {} {}",
+                            page_offset_dom_rect.left(),
+                            page_offset_dom_rect.top()
+                        );
+
+                        log::debug!("key {}", e.code());
+                        let code = e.code();
+                        if code == "KeyA" || code == "ArrowLeft" {
+                            e.prevent_default();
+                            let x = &(page_offset_dom_rect.left() + CHARA_OFFSET as f64
+                                - MOVING_DISTANCE);
+                            let y = &(page_offset_dom_rect.top() + CHARA_OFFSET as f64);
+                            // myself Nodeの移動
+                            move_node(&my_character_node_ref, x, y, MOVE_SPEED_MS)
+                                .expect("Failed to my_character_node_ref move_node");
+                            // 吹き出しNodeの移動
+                            move_node(&balloon_node_ref, x, y, MOVE_SPEED_MS)
+                                .expect("Failed to balloon_node_ref move_node");
+                        }
+                        if code == "KeyW" || code == "ArrowUp" {
+                            e.prevent_default();
+                            let x = &(page_offset_dom_rect.left() + CHARA_OFFSET as f64);
+                            let y = &(page_offset_dom_rect.top() + CHARA_OFFSET as f64
+                                - MOVING_DISTANCE);
+                            // myself Nodeの移動
+                            move_node(&my_character_node_ref, x, y, MOVE_SPEED_MS)
+                                .expect("Failed to my_character_node_ref move_node");
+                            // 吹き出しNodeの移動
+                            move_node(&balloon_node_ref, x, y, MOVE_SPEED_MS)
+                                .expect("Failed to balloon_node_ref move_node");
+                        }
+                        if code == "KeyD" || code == "ArrowRight" {
+                            e.prevent_default();
+                            let x = &(page_offset_dom_rect.left()
+                                + CHARA_OFFSET as f64
+                                + MOVING_DISTANCE);
+                            let y = &(page_offset_dom_rect.top() + CHARA_OFFSET as f64);
+                            // myself Nodeの移動
+                            move_node(&my_character_node_ref, x, y, MOVE_SPEED_MS)
+                                .expect("Failed to my_character_node_ref move_node");
+                            // 吹き出しNodeの移動
+                            move_node(&balloon_node_ref, x, y, MOVE_SPEED_MS)
+                                .expect("Failed to balloon_node_ref move_node");
+                        }
+                        if code == "KeyS" || code == "ArrowDown" {
+                            e.prevent_default();
+                            let x = &(page_offset_dom_rect.left() + CHARA_OFFSET as f64);
+                            let y = &(page_offset_dom_rect.top()
+                                + CHARA_OFFSET as f64
+                                + MOVING_DISTANCE);
+                            // myself Nodeの移動
+                            move_node(&my_character_node_ref, x, y, MOVE_SPEED_MS)
+                                .expect("Failed to my_character_node_ref move_node");
+                            // 吹き出しNodeの移動
+                            move_node(&balloon_node_ref, x, y, MOVE_SPEED_MS)
+                                .expect("Failed to balloon_node_ref move_node");
+                        }
+
+                        myself_rect.set(Some(page_offset_dom_rect));
+                    }
+                }));
+
                 let register_listener = move || {
                     document
                         .add_event_listener_with_callback(
@@ -122,14 +240,23 @@ pub(crate) fn Myself(props: &MyselfProps) -> Html {
                             mouseup_listener.as_ref().unchecked_ref(),
                         )
                         .unwrap();
+
+                    document
+                        .add_event_listener_with_callback(
+                            "keydown",
+                            keydown_listener.as_ref().unchecked_ref(),
+                        )
+                        .unwrap();
                 };
                 register_listener();
 
                 register_listener
             },
-            (my_character_node_ref, is_active),
+            (my_character_node_ref, is_active, chat_text_field_onfocus),
         );
     }
+
+    {}
 
     use_interval(
         {
@@ -191,9 +318,8 @@ fn send_my_pos(
     let my_pos = MyLocation {
         action: LocationType::UpdateCharacterPos,
         user_id: username.to_string(),
-        // 32. 良くない
-        pos_x: myself_rect.left() + 32.,
-        pos_y: myself_rect.top() + 32.,
+        pos_x: myself_rect.left() + CHARA_OFFSET as f64,
+        pos_y: myself_rect.top() + CHARA_OFFSET as f64,
     };
     if let Err(send_result) = (*ws)
         .borrow()
